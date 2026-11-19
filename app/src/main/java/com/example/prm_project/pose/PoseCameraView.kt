@@ -1,5 +1,6 @@
 package com.example.prm_project.pose
 
+import androidx.camera.core.ImageAnalysis
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -23,12 +24,13 @@ import kotlinx.coroutines.flow.Flow
  * 전면 카메라 미리보기 위에 [frames]의 스켈레톤을 겹쳐 그린다. ③은 이 Composable을 배치만 한다.
  *
  * 감지 상태가 DETECTED가 아니면 스켈레톤을 흐리게 그린다. 관절이 없으면 아무것도 그리지 않는다.
+ * 실제 카메라는 [CameraPoseSource.analyzer]를 [analyzer]로 넘긴다. [FakePoseSource]면 넘기지 않는다.
  */
 @Composable
-fun PoseCameraView(frames: Flow<PoseFrame>, modifier: Modifier = Modifier) {
+fun PoseCameraView(frames: Flow<PoseFrame>, modifier: Modifier = Modifier, analyzer: ImageAnalysis.Analyzer? = null) {
     val frame by frames.collectAsStateWithLifecycle(initialValue = null)
     Box(modifier) {
-        CameraPreview(Modifier.fillMaxSize())
+        CameraPreview(Modifier.fillMaxSize(), analyzer)
         frame?.let { SkeletonOverlay(it, Modifier.fillMaxSize()) }
     }
 }

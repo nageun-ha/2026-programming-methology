@@ -10,8 +10,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts.RequestPermission
 import androidx.annotation.StringRes
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +42,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.prm_project.R
+import java.util.concurrent.Executors
 
 /**
  * 전면 카메라 미리보기. 카메라 권한 요청·거절 안내와 전면 카메라가 없는 기기 안내까지 여기서 처리한다.
@@ -47,9 +50,10 @@ import com.example.prm_project.R
  * - 미리보기는 잘라내지 않는 FIT_CENTER로 그린다. 기본값 FILL_CENTER는 가장자리를 잘라 스켈레톤이 어긋난다(#19).
  * - 미리보기는 전면 카메라라 거울처럼 좌우 반전돼 보인다. [com.example.prm_project.model.PoseFrame] 좌표 규칙과 같다.
  * - 카메라는 이 Composable이 화면에 있는 동안, 그리고 화면이 켜져 있는 동안만 켜진다.
+ * - [analyzer]가 있으면 같은 카메라의 분석 프레임(RGBA, 4:3)을 메인이 아닌 스레드에서 넘긴다.
  */
 @Composable
-fun CameraPreview(modifier: Modifier = Modifier) {
+fun CameraPreview(modifier: Modifier = Modifier, analyzer: ImageAnalysis.Analyzer? = null) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(context.hasCameraPermission()) }
     var denied by rememberSaveable { mutableStateOf(false) } // 화면 회전 뒤에도 거절 안내 유지
@@ -66,7 +70,7 @@ fun CameraPreview(modifier: Modifier = Modifier) {
     when {
         !context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_FRONT) ->
             Message(modifier, R.string.camera_front_missing)
-        granted -> FrontCameraView(modifier)
+        granted -> FrontCameraView(modifier, analyzer)
         denied -> Message(modifier, R.string.camera_permission_denied, R.string.camera_open_settings) {
             context.startActivity(
                 Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
@@ -80,7 +84,7 @@ fun CameraPreview(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun FrontCameraView(modifier: Modifier) {
+private fun FrontCameraView(modifier: Modifier, analyzer: ImageAnalysis.Analyzer?) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val controller = remember {
@@ -89,15 +93,26 @@ private fun FrontCameraView(modifier: Modifier) {
             .build()
         LifecycleCameraController(context).apply {
             cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
-            setEnabledUseCases(0) // 미리보기만. 분석(IMAGE_ANALYSIS)은 #25에서 켠다
+            imageAnalysisOutputImageFormat = ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888 // 비트맵 변환이 싸다
             // 분석 프레임과 미리보기 비율이 다르면 좌표가 맞아도 스켈레톤이 어긋나므로 둘 다 4:3으로 고정
             previewResolutionSelector = ratio4to3
             imageAnalysisResolutionSelector = ratio4to3
         }
     }
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(lifecycleOwner, analyzer) {
+        val executor = Executors.newSingleThreadExecutor()
+        if (analyzer == null) {
+            controller.setEnabledUseCases(0) // 미리보기만
+        } else {
+            controller.setEnabledUseCases(CameraController.IMAGE_ANALYSIS)
+            controller.setImageAnalysisAnalyzer(executor, analyzer)
+        }
         controller.bindToLifecycle(lifecycleOwner)
-        onDispose { controller.unbind() } // 화면에서 빠지면 Activity가 살아 있어도 카메라를 끈다
+        onDispose {
+            controller.unbind() // 화면에서 빠지면 Activity가 살아 있어도 카메라를 끈다
+            controller.clearImageAnalysisAnalyzer()
+            executor.shutdown()
+        }
     }
     AndroidView(
         factory = {
