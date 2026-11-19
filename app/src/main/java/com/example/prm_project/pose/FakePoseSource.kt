@@ -1,5 +1,6 @@
 package com.example.prm_project.pose
 
+import android.os.SystemClock
 import com.example.prm_project.model.DetectionState
 import com.example.prm_project.model.Joint
 import com.example.prm_project.model.Landmark
@@ -21,28 +22,34 @@ import kotlinx.coroutines.flow.flow
  * | 4~5 | 화면 밖 (관절 없음) | USER_CAUSED_LOSS |
  * | 5~5.3 | 서 있기 좌표 유지 | SOFTWARE_LOSS |
  *
- * [frames]는 cold flow라 수집할 때마다 0ms부터 시작한다. [PoseFrame.timestampMs]는 수집 시작 기준 경과 시간이다.
+ * [frames]는 cold flow라 수집할 때마다 시나리오 처음부터 시작한다.
+ * [PoseFrame.timestampMs]는 실제 카메라와 같은 [SystemClock.elapsedRealtime] 기준이다. 테스트는 [clock]을 바꿔 넣는다.
  */
-class FakePoseSource(private val fps: Int = 30) : PoseSource {
+class FakePoseSource(
+    private val fps: Int = 30,
+    private val clock: () -> Long = SystemClock::elapsedRealtime,
+) : PoseSource {
 
     override val frames: Flow<PoseFrame> = flow {
+        val startMs = clock()
         var index = 0L
         while (true) {
             val t = index * 1000 / fps
-            emit(frameAt(t))
+            emit(frameAt(t, startMs))
             index++
             delay(index * 1000 / fps - t) // 누적 오차 없이 index로 시각을 정한다
         }
     }
 
-    internal fun frameAt(timestampMs: Long): PoseFrame {
-        val (landmarks, detection) = when (timestampMs % CYCLE_MS) {
+    /** 시나리오 시작 후 [elapsedMs]일 때의 프레임. */
+    internal fun frameAt(elapsedMs: Long, startMs: Long = 0): PoseFrame {
+        val (landmarks, detection) = when (elapsedMs % CYCLE_MS) {
             in 0L until 2000L -> STANDING to DetectionState.DETECTED
             in 2000L until 4000L -> RIGHT_HAND_UP to DetectionState.DETECTED
             in 4000L until 5000L -> emptyMap<Joint, Landmark>() to DetectionState.USER_CAUSED_LOSS
             else -> STANDING to DetectionState.SOFTWARE_LOSS
         }
-        return PoseFrame(landmarks, IMAGE_WIDTH, IMAGE_HEIGHT, timestampMs, detection)
+        return PoseFrame(landmarks, IMAGE_WIDTH, IMAGE_HEIGHT, startMs + elapsedMs, detection)
     }
 
     private companion object {
