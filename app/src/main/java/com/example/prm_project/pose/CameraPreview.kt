@@ -101,6 +101,8 @@ private fun FrontCameraView(modifier: Modifier) {
         factory = {
             PreviewView(it).apply {
                 scaleType = PreviewView.ScaleType.FIT_CENTER
+                // 기본 SurfaceView는 Compose 위 겹침(스켈레톤)·레이아웃 애니메이션에서 깨질 수 있어 TextureView로 둔다
+                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                 this.controller = controller
             }
         },
