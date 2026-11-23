@@ -82,12 +82,31 @@ class GradeJudgeTest {
     }
 
     @Test
-    fun `목표 관절이 프레임에 없으면 wrongJoints에 들어간다`() {
+    fun `목표 관절을 하나도 잴 수 없으면 소프트웨어 원인 인식 실패와 같다`() {
         val full = frame(90f)
-        val result = judgeAt(full.copy(landmarks = full.landmarks - Joint.LEFT_WRIST)) // 0점 → MISS
+        val result = judgeAt(full.copy(landmarks = full.landmarks - Joint.LEFT_WRIST)) // 손목이 가려짐
 
-        assertEquals(Grade.MISS, result.grade)
-        assertEquals(listOf(Joint.LEFT_ELBOW), result.wrongJoints)
+        assertEquals(Grade.GREAT, result.grade)
+        assertTrue(result.recognitionFailed)
+        assertNull(result.wrongJoints)
+    }
+
+    @Test
+    fun `일부 관절만 잴 수 없으면 남은 관절로 판정한다`() {
+        val twoJoints = TARGET.copy(targetAngles = TARGET.targetAngles + (Joint.LEFT_SHOULDER to 30f))
+        val result = judge(frame(93f), twoJoints, beatIndex = 0, elapsedMs = 0L) // 엉덩이가 없어 어깨 각도는 못 잼
+
+        assertEquals(Grade.PERFECT, result.grade) // 0점으로 치면 0.467 → BAD
+        assertNull(result.wrongJoints)
+    }
+
+    @Test
+    fun `관절 하나면 허용 오차 안까지만 GREAT 이상`() {
+        val atTolerance = matchRate(mapOf(Joint.LEFT_ELBOW to 105f), TARGET) // 오차 15° → 0.667
+        val overTolerance = matchRate(mapOf(Joint.LEFT_ELBOW to 105.5f), TARGET) // 오차 15.5° → 0.656
+
+        assertTrue(atTolerance >= GradeThresholds.GREAT_MIN)
+        assertTrue(overTolerance < GradeThresholds.GREAT_MIN)
     }
 
     @Test
