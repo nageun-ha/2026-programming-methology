@@ -10,6 +10,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Entity(tableName = "exercise_records", indices = [Index("epochDay")])
 data class ExerciseRecordEntity(
@@ -19,6 +21,10 @@ data class ExerciseRecordEntity(
     val successCount: Int,
     val softwareFailCount: Int,
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val perfectCount: Int? = null,
+    val greatCount: Int? = null,
+    val badCount: Int? = null,
+    val missCount: Int? = null,
 )
 
 @Dao
@@ -30,11 +36,20 @@ interface ExerciseRecordDao {
     suspend fun recordsBetween(from: Long, to: Long): List<ExerciseRecordEntity>
 }
 
-@Database(entities = [ExerciseRecordEntity::class], version = 1, exportSchema = false)
+@Database(entities = [ExerciseRecordEntity::class], version = 2, exportSchema = false)
 abstract class RecordDatabase : RoomDatabase() {
     abstract fun exerciseRecordDao(): ExerciseRecordDao
 
     companion object {
+        internal val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE exercise_records ADD COLUMN perfectCount INTEGER")
+                db.execSQL("ALTER TABLE exercise_records ADD COLUMN greatCount INTEGER")
+                db.execSQL("ALTER TABLE exercise_records ADD COLUMN badCount INTEGER")
+                db.execSQL("ALTER TABLE exercise_records ADD COLUMN missCount INTEGER")
+            }
+        }
+
         private var instance: RecordDatabase? = null
 
         @Synchronized
@@ -43,6 +58,6 @@ abstract class RecordDatabase : RoomDatabase() {
                 context.applicationContext,
                 RecordDatabase::class.java,
                 "exercise-records.db",
-            ).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2).build().also { instance = it }
     }
 }

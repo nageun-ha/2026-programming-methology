@@ -9,6 +9,7 @@ import java.time.LocalDate
  * @property judgedCount 판독 횟수
  * @property successCount 성공 횟수. 소프트웨어 원인 인식 실패도 포함한다.
  * @property softwareFailCount 소프트웨어 원인 인식 실패 횟수
+ * @property gradeCounts 등급별 횟수. 이전 기록에 없는 등급은 맵에 포함하지 않는다.
  */
 data class ExerciseRecord(
     val date: LocalDate,
@@ -16,4 +17,5 @@ data class ExerciseRecord(
     val judgedCount: Int,
     val successCount: Int,
     val softwareFailCount: Int,
+    val gradeCounts: Map<Grade, Int> = emptyMap(),
 )

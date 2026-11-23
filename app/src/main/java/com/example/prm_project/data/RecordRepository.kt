@@ -1,6 +1,7 @@
 package com.example.prm_project.data
 
 import com.example.prm_project.model.ExerciseRecord
+import com.example.prm_project.model.Grade
 import java.time.LocalDate
 
 class RecordRepository(private val dao: ExerciseRecordDao) {
@@ -13,6 +14,10 @@ class RecordRepository(private val dao: ExerciseRecordDao) {
                 judgedCount = record.judgedCount,
                 successCount = record.successCount,
                 softwareFailCount = record.softwareFailCount,
+                perfectCount = record.gradeCounts[Grade.PERFECT],
+                greatCount = record.gradeCounts[Grade.GREAT],
+                badCount = record.gradeCounts[Grade.BAD],
+                missCount = record.gradeCounts[Grade.MISS],
             ),
         )
     }
@@ -26,6 +31,12 @@ class RecordRepository(private val dao: ExerciseRecordDao) {
                 judgedCount = row.judgedCount,
                 successCount = row.successCount,
                 softwareFailCount = row.softwareFailCount,
+                gradeCounts = buildMap {
+                    row.perfectCount?.let { put(Grade.PERFECT, it) }
+                    row.greatCount?.let { put(Grade.GREAT, it) }
+                    row.badCount?.let { put(Grade.BAD, it) }
+                    row.missCount?.let { put(Grade.MISS, it) }
+                },
             )
         }
 }
