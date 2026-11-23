@@ -3,6 +3,7 @@ package com.example.prm_project.pose
 import com.example.prm_project.model.DetectionState.DETECTED
 import com.example.prm_project.model.DetectionState.SOFTWARE_LOSS
 import com.example.prm_project.model.DetectionState.USER_CAUSED_LOSS
+import com.example.prm_project.model.EdgeWarning
 import com.example.prm_project.model.Joint
 import com.example.prm_project.model.Landmark
 import org.junit.Assert.assertEquals
@@ -92,6 +93,50 @@ class DetectionClassifierTest {
     fun `가운데서 한 번에 화면 밖으로 사라지면 사용자 원인`() {
         feed(body())
         assertEquals(USER_CAUSED_LOSS, feed(body(dx = 1f, likelihood = 0.1f)).state)
+    }
+
+    // #50 방향별 잘림 정도, outOfFrame, lowConfidence
+
+    @Test
+    fun `가장자리로 갈수록 그쪽 잘림 정도가 오르고 화면 밖 관절은 outOfFrame`() {
+        val center = feed(body())
+        assertEquals(EdgeWarning.NONE, center.edge)
+        assertTrue(center.outOfFrame.isEmpty())
+
+        val near = feed(body(dx = 0.35f)) // 오른손목 x=0.98 → (0.05 − 0.02) / 0.1
+        assertEquals(0.3f, near.edge.right, 1e-4f)
+        assertEquals(0f, near.edge.left)
+
+        val out = feed(body(dx = 0.45f)) // 오른손목 x=1.08, 오른어깨 x=1.05
+        assertEquals(1f, out.edge.right)
+        assertEquals(setOf(Joint.RIGHT_SHOULDER, Joint.RIGHT_WRIST), out.outOfFrame)
+        assertFalse(Joint.RIGHT_WRIST in out.landmarks)
+    }
+
+    @Test
+    fun `소프트웨어 원인이면 잘림 정도 0, 사용자 원인으로 사라지면 직전 값 유지`() {
+        val headAtTop = feed(body() + (Joint.NOSE to Landmark(0.5f, 0.03f, 0.9f))) // (0.05 − 0.03) / 0.1
+        assertEquals(0.2f, headAtTop.edge.top, 1e-4f)
+        val glitch = feed(emptyMap())
+        assertEquals(SOFTWARE_LOSS, glitch.state)
+        assertEquals(EdgeWarning.NONE, glitch.edge)
+
+        val walkingOut = feed(body(dx = 0.45f)).edge
+        val gone = feed(emptyMap())
+        assertEquals(USER_CAUSED_LOSS, gone.state)
+        assertEquals(walkingOut, gone.edge)
+    }
+
+    @Test
+    fun `화면 안 저신뢰 관절은 lowConfidence`() {
+        val dim = Joint.RIGHT_WRIST to Landmark(0.63f, 0.53f, 0.2f)
+        val one = feed(body() + dim)
+        assertEquals(setOf(Joint.RIGHT_WRIST), one.lowConfidence)
+        assertFalse(Joint.RIGHT_WRIST in one.landmarks)
+
+        val all = feed(body(likelihood = 0.1f))
+        assertEquals(SOFTWARE_LOSS, all.state)
+        assertEquals(body().keys, all.lowConfidence)
     }
 
     @Test

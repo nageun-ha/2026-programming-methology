@@ -77,7 +77,12 @@ class CameraPoseSource(
         }
         val timestampMs = result.timestampMs()
         val classified = classifier.classify(mapper.map(raw), timestampMs)
-        output.tryEmit(PoseFrame(classified.landmarks, mapper.imageWidth, mapper.imageHeight, timestampMs, classified.state))
+        output.tryEmit(
+            PoseFrame(
+                classified.landmarks, mapper.imageWidth, mapper.imageHeight, timestampMs, classified.state,
+                classified.outOfFrame, classified.lowConfidence, classified.edge,
+            ),
+        )
     }
 
     override fun close() = landmarker.close()

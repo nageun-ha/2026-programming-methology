@@ -22,6 +22,10 @@ data class Landmark(val x: Float, val y: Float, val likelihood: Float)
  * @property imageWidth 회전 보정 후 이미지 너비(px). 세로로 든 폰이면 높이보다 작다.
  * @property timestampMs ①이 프레임을 받은 시각(ms). [android.os.SystemClock.elapsedRealtime] 기준이라
  *   운동 시작 시각(`ExerciseState.startedAtMs`)과 같은 시계로 비교할 수 있다(#45).
+ * @property outOfFrame 이번 프레임에서 좌표가 화면(0~1) 밖으로 추정된 관절. 신뢰도와 상관없다. [landmarks]에는 없다.
+ *   경계를 넘은 정도가 작으면(추정 흔들림 범위) [detection]은 DETECTED로 남는다.
+ * @property lowConfidence 이번 프레임에서 화면 안에 있지만 신뢰도가 기준 미만인 관절(가려짐·어두움). [landmarks]에는 없다.
+ * @property edge 방향별 화면 잘림 정도(#50)
  */
 data class PoseFrame(
     val landmarks: Map<Joint, Landmark>,
@@ -29,4 +33,20 @@ data class PoseFrame(
     val imageHeight: Int,
     val timestampMs: Long,
     val detection: DetectionState,
+    val outOfFrame: Set<Joint> = emptySet(),
+    val lowConfidence: Set<Joint> = emptySet(),
+    val edge: EdgeWarning = EdgeWarning.NONE,
 )
+
+/**
+ * 화면 가장자리 방향별 잘림 정도. 각 0~1이고 방향은 화면(거울) 기준이다.
+ *
+ * 그 방향으로 가장 많이 나간 관절 기준으로, 가장자리 안쪽 5%에서 0부터 올라 경계 밖 5%에서 1이 된다.
+ * 소프트웨어 원인 인식 실패면 모두 0이고, 관절이 하나도 없으면 직전 값을 유지한다.
+ * 하나의 값만 필요하면 `maxOf(left, right, top, bottom)`을 쓴다.
+ */
+data class EdgeWarning(val left: Float, val right: Float, val top: Float, val bottom: Float) {
+    companion object {
+        val NONE = EdgeWarning(0f, 0f, 0f, 0f)
+    }
+}
