@@ -40,6 +40,13 @@ class FramingHintTest {
     }
 
     @Test
+    fun `SOFTWARE_LOSS면 직전 관절이 있어도 NOT_VISIBLE`() {
+        val frame = standing(0.1f, 0.9f).copy(detection = DetectionState.SOFTWARE_LOSS)
+
+        assertEquals(FramingHint.NOT_VISIBLE, judgeFraming(frame))
+    }
+
+    @Test
     fun `가운데 적정 크기면 OK`() {
         assertEquals(FramingHint.OK, judgeFraming(standing(0.1f, 0.9f))) // 박스 높이 0.8
     }

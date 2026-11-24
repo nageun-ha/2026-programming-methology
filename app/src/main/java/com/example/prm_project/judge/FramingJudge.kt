@@ -1,5 +1,6 @@
 package com.example.prm_project.judge
 
+import com.example.prm_project.model.DetectionState
 import com.example.prm_project.model.PoseFrame
 
 /**
@@ -24,10 +25,13 @@ data class FramingThresholds(
  * [frame] 한 장으로 위치 안내를 정한다. 부수 효과가 없다.
  *
  * 관절 없음 → 신뢰도 전부 낮음 → 박스가 작음 순서로 보고, 모두 아니면 [FramingHint.OK]다.
- * 위치 안내는 감지 상태와 독립이므로 [PoseFrame.detection]은 보지 않는다.
+ * [DetectionState.SOFTWARE_LOSS]에서는 #46이 직전 관절을 그대로 보내므로, 옛 좌표로 OK가 나와
+ * 준비 시간이 쌓이지 않게 [FramingHint.NOT_VISIBLE]로 본다.
+ * 저신뢰 관절 정보(#59)가 들어오면 이 경우를 [FramingHint.LOW_LIGHT]와 나눈다.
  * 박스 높이는 정규화 y의 (최대 − 최소)라 이미 화면 높이 대비 비율이다.
  */
 fun judgeFraming(frame: PoseFrame, thresholds: FramingThresholds = FramingThresholds()): FramingHint {
+    if (frame.detection == DetectionState.SOFTWARE_LOSS) return FramingHint.NOT_VISIBLE
     val points = frame.landmarks.values
     if (points.isEmpty()) return FramingHint.NOT_VISIBLE
     if (points.all { it.likelihood < thresholds.lowLightLikelihood }) return FramingHint.LOW_LIGHT
