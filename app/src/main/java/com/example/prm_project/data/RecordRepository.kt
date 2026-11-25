@@ -5,8 +5,16 @@ import com.example.prm_project.model.Grade
 import java.time.LocalDate
 
 class RecordRepository(private val dao: ExerciseRecordDao) {
-    /** 운동 1회 기록을 추가한다. 같은 날짜의 기존 기록도 유지한다. */
+    /** 운동 1회 기록을 추가한다. 등급별 횟수는 미수집이거나 판독 횟수 전체를 포함해야 한다. */
     suspend fun save(record: ExerciseRecord) {
+        val gradeCounts = record.gradeCounts.toMap()
+        if (gradeCounts.isNotEmpty()) {
+            require(gradeCounts.keys.containsAll(Grade.entries)) { "Grade counts must include every grade." }
+            require(gradeCounts.values.all { it >= 0 }) { "Grade counts must be non-negative." }
+            require(gradeCounts.values.sumOf { it.toLong() } == record.judgedCount.toLong()) {
+                "Grade counts must add up to judgedCount."
+            }
+        }
         dao.insert(
             ExerciseRecordEntity(
                 epochDay = record.date.toEpochDay(),
@@ -14,10 +22,10 @@ class RecordRepository(private val dao: ExerciseRecordDao) {
                 judgedCount = record.judgedCount,
                 successCount = record.successCount,
                 softwareFailCount = record.softwareFailCount,
-                perfectCount = record.gradeCounts[Grade.PERFECT],
-                greatCount = record.gradeCounts[Grade.GREAT],
-                badCount = record.gradeCounts[Grade.BAD],
-                missCount = record.gradeCounts[Grade.MISS],
+                perfectCount = gradeCounts[Grade.PERFECT],
+                greatCount = gradeCounts[Grade.GREAT],
+                badCount = gradeCounts[Grade.BAD],
+                missCount = gradeCounts[Grade.MISS],
             ),
         )
     }

@@ -9,6 +9,7 @@ import com.example.prm_project.model.Grade
 import java.time.LocalDate
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.UUID
@@ -27,9 +28,9 @@ class RecordRepositoryTest {
                 judgedCount = 8,
                 successCount = 5,
                 softwareFailCount = 1,
-                gradeCounts = mapOf(Grade.PERFECT to 2, Grade.GREAT to 2, Grade.BAD to 0, Grade.MISS to 3),
+                gradeCounts = mapOf(Grade.PERFECT to 2, Grade.GREAT to 3, Grade.BAD to 0, Grade.MISS to 3),
             )
-            val sameDay = first.copy(durationSec = 120, judgedCount = 10, successCount = 7)
+            val sameDay = first.copy(durationSec = 120, gradeCounts = emptyMap())
             val last = first.copy(date = LocalDate.of(2024, 2, 29))
 
             repository.save(last)
@@ -39,6 +40,29 @@ class RecordRepositoryTest {
             repository.save(last.copy(date = last.date.plusDays(1)))
 
             assertEquals(listOf(first, sameDay, last), repository.recordsBetween(first.date, last.date))
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun rejectsIncompleteNegativeAndInconsistentGradeCountsBeforeInsert() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database = Room.inMemoryDatabaseBuilder(context, RecordDatabase::class.java).build()
+        try {
+            val repository = RecordRepository(database.exerciseRecordDao())
+            val date = LocalDate.of(2024, 2, 1)
+            val record = ExerciseRecord(date, 90, 1, 1, 0)
+            val zeros = Grade.entries.associateWith { 0 }
+            listOf(
+                mapOf(Grade.PERFECT to 1),
+                zeros + mapOf(Grade.PERFECT to 2, Grade.BAD to -1),
+                zeros,
+            ).forEach { counts ->
+                val failure = runCatching { repository.save(record.copy(gradeCounts = counts)) }.exceptionOrNull()
+                assertTrue("Expected invalid counts to fail: $counts", failure is IllegalArgumentException)
+            }
+            assertTrue(repository.recordsBetween(date, date).isEmpty())
         } finally {
             database.close()
         }

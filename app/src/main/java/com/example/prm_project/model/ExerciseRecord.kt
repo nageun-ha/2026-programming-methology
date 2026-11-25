@@ -9,7 +9,7 @@ import java.time.LocalDate
  * @property judgedCount 판독 횟수
  * @property successCount 성공 횟수. 소프트웨어 원인 인식 실패도 포함한다.
  * @property softwareFailCount 소프트웨어 원인 인식 실패 횟수
- * @property gradeCounts 등급별 횟수. 이전 기록에 없는 등급은 맵에 포함하지 않는다.
+ * @property gradeCounts 미수집이면 빈 맵. 수집했다면 모든 등급의 0 이상 횟수가 있어야 하며 합은 [judgedCount]다.
  */
 data class ExerciseRecord(
     val date: LocalDate,
