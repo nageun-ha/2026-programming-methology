@@ -2,12 +2,14 @@ package com.example.prm_project.judge
 
 import com.example.prm_project.model.Bone
 import com.example.prm_project.model.DetectionState
+import com.example.prm_project.model.GuidePose
 import com.example.prm_project.model.Joint
 import com.example.prm_project.model.Landmark
 import com.example.prm_project.model.PoseFrame
 import kotlin.math.atan2
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class GuidePoseBuilderTest {
@@ -51,9 +53,69 @@ class GuidePoseBuilderTest {
         assertEquals(lengths.getValue(Bone.RIGHT_FOREARM), lengths.getValue(Bone.LEFT_FOREARM), EPS_PX)
     }
 
+    private fun GuidePose.toFrame() = PoseFrame(
+        points.mapValues { Landmark(it.value.x, it.value.y, 1f) }, W, H, 0L, DetectionState.DETECTED,
+    )
+
+    /** 왼쪽 아래팔을 위(-90°)로 올린 목표 방향. */
+    private val raisedArm = boneDirections(person()) + (Bone.LEFT_FOREARM to -90f)
+
+    @Test
+    fun `자기 자세 그대로면 원래 좌표와 같다`() {
+        val frame = person()
+
+        val guide = buildGuidePose(boneDirections(frame), frame)!!
+
+        assertEquals(Joint.entries.toSet(), guide.points.keys)
+        for ((joint, landmark) in frame.landmarks) {
+            assertEquals(landmark.x, guide.points.getValue(joint).x, EPS)
+            assertEquals(landmark.y, guide.points.getValue(joint).y, EPS)
+        }
+    }
+
+    @Test
+    fun `키가 다른 두 사용자는 각자의 뼈 길이를 따른다`() {
+        for (frame in listOf(person(1f), person(1.3f))) {
+            val guide = buildGuidePose(raisedArm, frame)!!
+
+            val expected = boneLengths(frame)
+            boneLengths(guide.toFrame()).forEach { (bone, length) -> assertEquals(expected.getValue(bone), length, EPS_PX) }
+        }
+    }
+
+    @Test
+    fun `비정사각 이미지에서도 결과 뼈 방향이 입력과 같다`() {
+        val guide = buildGuidePose(raisedArm, person())!!
+
+        boneDirections(guide.toFrame()).forEach { (bone, deg) -> assertEquals(raisedArm.getValue(bone), deg, EPS_DEG) }
+    }
+
+    @Test
+    fun `팔꿈치가 없으면 반대쪽 팔 길이로 가이드를 만든다`() {
+        val frame = person(missing = setOf(Joint.LEFT_ELBOW))
+
+        val lengths = boneLengths(buildGuidePose(boneDirections(person()), frame)!!.toFrame())
+
+        assertEquals(boneLengths(frame).getValue(Bone.RIGHT_UPPER_ARM), lengths.getValue(Bone.LEFT_UPPER_ARM), EPS_PX)
+        assertEquals(boneLengths(frame).getValue(Bone.RIGHT_FOREARM), lengths.getValue(Bone.LEFT_FOREARM), EPS_PX)
+    }
+
+    @Test
+    fun `엉덩이가 하나 없으면 null`() {
+        assertNull(buildGuidePose(raisedArm, person(missing = setOf(Joint.RIGHT_HIP))))
+    }
+
+    @Test
+    fun `방향이 없는 아래팔은 그쪽 손목만 뺀다`() {
+        val guide = buildGuidePose(raisedArm - Bone.LEFT_FOREARM, person())!!
+
+        assertEquals(Joint.entries.toSet() - Joint.LEFT_WRIST, guide.points.keys)
+    }
+
     private companion object {
         const val W = 480
         const val H = 640
+        const val EPS = 1e-4f
         const val EPS_PX = 1e-2f
         const val EPS_DEG = 1e-2f
     }
