@@ -28,13 +28,17 @@ class RealExerciseSessionTest {
 
     private val frames = MutableSharedFlow<PoseFrame>(extraBufferCapacity = 64)
 
-    private fun TestScope.startedSession(chart: Chart, offsetMs: Long = 0L) = RealExerciseSession(
+    private fun TestScope.startedSession(
+        chart: Chart,
+        offsetMs: Long = 0L,
+        clock: () -> Long = { testScheduler.currentTime },
+    ) = RealExerciseSession(
         scope = backgroundScope,
         frames = frames,
         chart = chart,
         poses = mapOf("a" to TargetPose("a", "A", emptyMap(), 10f)),
         calibration = CalibrationConfig(poseLatencyOffsetMs = offsetMs),
-        clock = { testScheduler.currentTime },
+        clock = clock,
         today = { TODAY },
     ).also {
         it.start()
@@ -117,6 +121,33 @@ class RealExerciseSessionTest {
         }
         assertEquals(1, result.beatIndex)
         return result
+    }
+
+    @Test
+    fun `판정 시각보다 오래된 프레임만 있으면 인식 실패로 본다`() = runTest {
+        val session = startedSession(Chart(60, listOf(ChartItem.Pose("a", 2))))
+        emit(DetectionState.USER_CAUSED_LOSS, 0) // 1박 판정 시각보다 1000ms 전, 그 뒤로 카메라가 멈춤
+
+        advanceTimeBy(BEAT_MS)
+        runCurrent()
+
+        val result = session.state.value.lastResult!!
+        assertEquals(1, result.beatIndex)
+        assertTrue(result.recognitionFailed) // 오래된 프레임으로 판정하면 MISS
+    }
+
+    @Test
+    fun `처리가 늦어져도 다음 박자는 목표 시각에 시작한다`() = runTest {
+        var lagMs = 0L // 실제 시계가 가상 시간보다 앞선 만큼. 처리 시간이 걸린 것처럼 흉내 낸다
+        val session = startedSession(Chart(60, listOf(ChartItem.Pose("a", 3))), clock = { testScheduler.currentTime + lagMs })
+        lagMs = 300
+
+        advanceTimeBy(BEAT_MS) // 1박 진입. 이때 시계는 1300이라 2박까지 700ms만 기다려야 한다
+        runCurrent()
+        advanceTimeBy(BEAT_MS - lagMs)
+        runCurrent()
+
+        assertEquals(2, session.state.value.beatIndex) // delay(beatMs)를 반복하면 아직 1박
     }
 
     @Test
