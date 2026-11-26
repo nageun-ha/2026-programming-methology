@@ -1,6 +1,7 @@
 package com.example.prm_project.pose
 
 import com.example.prm_project.model.DetectionState
+import com.example.prm_project.model.EdgeWarning
 import com.example.prm_project.model.Joint
 import com.example.prm_project.model.Landmark
 import com.example.prm_project.pose.DetectionThresholds.EDGE_MARGIN
@@ -13,7 +14,10 @@ object DetectionThresholds {
     /** 신뢰도가 이 값 미만인 관절은 잡히지 않은 것으로 본다. */
     const val MIN_LIKELIHOOD = 0.5f
 
-    /** 관절 x가 좌우 가장자리에서 이 비율 안쪽이면 "가장자리에 닿았다"고 본다. 위아래는 머리·발이 자주 닿아 보지 않는다. */
+    /**
+     * 관절 x가 좌우 가장자리에서 이 비율 안쪽이면 "가장자리에 닿았다"고 본다. 위아래는 머리·발이 자주 닿아 보지 않는다.
+     * [EdgeWarning]은 네 방향 모두 이 비율 안쪽부터 오른다.
+     */
     const val EDGE_MARGIN = 0.05f
 
     /** 좌표가 화면 경계를 이만큼 넘어야 "확실히 화면 밖"으로 본다. 경계 근처 추정 좌표의 흔들림을 무시한다. */
@@ -23,8 +27,14 @@ object DetectionThresholds {
     const val SOFTWARE_LOSS_MAX_MS = 1000L
 }
 
-/** [DetectionClassifier.classify] 결과. [landmarks]는 [com.example.prm_project.model.PoseFrame.landmarks]에 그대로 넣는다. */
-data class Classification(val landmarks: Map<Joint, Landmark>, val state: DetectionState)
+/** [DetectionClassifier.classify] 결과. 같은 이름의 [com.example.prm_project.model.PoseFrame] 필드에 그대로 넣는다. */
+data class Classification(
+    val landmarks: Map<Joint, Landmark>,
+    val state: DetectionState,
+    val outOfFrame: Set<Joint> = emptySet(),
+    val lowConfidence: Set<Joint> = emptySet(),
+    val edge: EdgeWarning = EdgeWarning.NONE,
+)
 
 /**
  * 관절 위치와 신뢰도로 [DetectionState]를 정하고 [com.example.prm_project.model.PoseFrame]에 넣을 관절을 고른다.
@@ -45,8 +55,19 @@ class DetectionClassifier {
     private var lastSeen: Map<Joint, Landmark> = emptyMap()
     private var lastSeenAtEdge = false
     private var lostSinceMs: Long? = null
+    private var lastEdge = EdgeWarning.NONE
 
     fun classify(raw: Map<Joint, Landmark>, timestampMs: Long): Classification {
+        val result = decide(raw, timestampMs)
+        if (raw.isNotEmpty()) lastEdge = edgeWarning(raw.values)
+        return result.copy(
+            outOfFrame = raw.filterValues { !it.isInside() }.keys,
+            lowConfidence = raw.filterValues { it.isInside() && it.likelihood < MIN_LIKELIHOOD }.keys,
+            edge = if (result.state == DetectionState.SOFTWARE_LOSS) EdgeWarning.NONE else lastEdge,
+        )
+    }
+
+    private fun decide(raw: Map<Joint, Landmark>, timestampMs: Long): Classification {
         // 화면 밖 관절은 신뢰도가 낮게 나오므로 신뢰도와 상관없이 raw로 본다
         val partlyOut = raw.values.any { it.isClearlyOut() }
         val confident = raw.filterValues { it.likelihood >= MIN_LIKELIHOOD }
@@ -73,4 +94,15 @@ class DetectionClassifier {
         x < -OUT_MARGIN || x > 1 + OUT_MARGIN || y < -OUT_MARGIN || y > 1 + OUT_MARGIN
 
     private fun Landmark.nearSideEdge() = x < EDGE_MARGIN || x > 1 - EDGE_MARGIN
+
+    // 화면 밖 좌표를 신뢰도와 상관없이 쓴다. 가벼운 모델은 밖으로 나간 관절을 경계 안쪽에 붙여 주므로 1까지 오르지 않는다(#18).
+    private fun edgeWarning(points: Collection<Landmark>) = EdgeWarning(
+        left = points.maxOf { towardEdge(it.x) },
+        right = points.maxOf { towardEdge(1 - it.x) },
+        top = points.maxOf { towardEdge(it.y) },
+        bottom = points.maxOf { towardEdge(1 - it.y) },
+    )
+
+    /** 가장자리까지 남은 거리 [distance]가 [EDGE_MARGIN]이면 0, 경계 밖 [OUT_MARGIN]이면 1 */
+    private fun towardEdge(distance: Float) = ((EDGE_MARGIN - distance) / (EDGE_MARGIN + OUT_MARGIN)).coerceIn(0f, 1f)
 }
