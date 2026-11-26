@@ -4,7 +4,7 @@ ML Kit Pose Detection과 MediaPipe Pose Landmarker를 같은 조건에서 비교
 
 ## 결론
 
-**MediaPipe Pose Landmarker (full 모델)** 을 쓴다. 단, 실기기 측정이 아래 기준을 통과해야 확정한다.
+**MediaPipe Pose Landmarker (full 모델)** 을 쓴다. 실기기(Galaxy S24 Ultra, SM-S928N, Android 17) 측정에서 아래 기준을 통과해 확정했다(p90 24.5ms).
 
 - 기준(측정 전에 정함): 실기기에서 full 모델 한 프레임 처리 시간 p90 ≤ 66ms (15fps 이상)
 - 통과 못 하면: 같은 표에서 기준을 통과하는 것 중 "화면 밖 관절" 항목이 나은 것을 고른다. lite·ML Kit 기본 모델을 쓰게 되면 화면 밖 판정(#29)을 다시 설계한다.
@@ -23,7 +23,8 @@ ML Kit Pose Detection과 MediaPipe Pose Landmarker를 같은 조건에서 비교
 | APK 증가 (전체 ABI) | +84.5MB | +88.1MB | +75.9MB | +79.3MB |
 | APK 증가 (arm64 폰 1대 몫) | +28.7MB | +32.3MB | +21.9MB | +25.3MB |
 | 처리 시간 (에뮬레이터, 참고용) | 12.0~15.3ms | 15.5ms | 10.3~12.6ms | 15.3~16.8ms |
-| **처리 시간 (실기기)** | (측정 예정) | (측정 예정) | (측정 예정) | (측정 예정) |
+| **처리 시간 (실기기, 평균 / p90)** | 12.3 / 26.0ms | 19.4 / 28.5ms | 30.9 / 41.3ms | 19.6 / **24.5ms** |
+| 화면 밖 손목 (실기기, 실제 x=1.28) | x=0.99, 0.96 ❌ | x=1.09, 0.33 | x=0.98, presence 0.94 ❌ | x=1.22, presence 0.08 |
 | 관절 수 | 33 | 33 | 33 | 33 |
 | 좌표 | 픽셀, 회전 적용 후 기준 | 같음 | 0~1, **회전 전 버퍼** 기준 | 같음 |
 | 신뢰도 | `inFrameLikelihood` | 같음 | `visibility`, `presence` | 같음 |
@@ -41,6 +42,8 @@ ML Kit Pose Detection과 MediaPipe Pose Landmarker를 같은 조건에서 비교
 ### 처리 시간
 - 계측 테스트로 같은 이미지(전신 사진을 4:3으로 잘라 640×480, 카메라 분석 해상도와 같음)를 영상 모드(ML Kit `STREAM_MODE`, MediaPipe `VIDEO`)로 20번 예열 후 100번 처리해 평균·p50·p90을 쟀다.
 - 에뮬레이터: Pixel 6 AVD, API 35 x86_64, PC CPU(WHPX). **폰 성능과 다르므로 순위를 정하는 데 쓰지 않는다.** 측정 코드가 도는지 확인한 값이다.
+- 실기기: Galaxy S24 Ultra(SM-S928N), Android 17, 충전 중, 2026-11-26. 같은 테스트 6개를 한 번에 돌렸다(`Finished 6 tests on SM-S928N - 17`).
+- 실기기에서 lite가 full보다 느렸다(p90 41.3 vs 24.5ms). 원인은 확인하지 않았다. 결론은 full이라 영향이 없다.
 - 실기기 측정 명령 (측정 코드는 머지하지 않는 `bench/pose-library` 브랜치에 있다):
 
 ```
