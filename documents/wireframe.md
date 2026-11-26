@@ -10,6 +10,7 @@
 |---|---|---|---|
 | **타이틀** | `title` | ④ (뼈대) / ③ (시안) | 동심원 액티비티 링 + 포즈 아이콘, `Pose Beat`, `Tap to Start` |
 | **홈** | `home` | ④ (#15) | 상단 헤더(`POSE BEAT`, 연속 일수), 활동 잔디 카드(`ACTIVITY`, `성공/판독`), `START WORKOUT`, `CALIBRATION`, 하단 `Home` / `Records` 탭 |
+| **트랙 선택** | `track_select` | ③ (추후 이슈) | 리듬게임 곡 선택처럼 세로 스크롤로 루틴 선택(제목·BPM·난이도·최고 랭크·포즈 미리보기), 하단 고정 `START` |
 | **권한 거절** | `permission` | ① (#11) | 카메라 권한 필요 안내, 설정 이동 / 다시 요청 버튼 |
 | **보정** | `calibration` | ③ (#35) | 운동 화면과 동일한 위아래 반분할로 1단계(허용 오차)·2단계(지연 오프셋) 진행 후 저장 → 홈 |
 | **준비** | `exercise` (`READY`) | ③ (#34) | 전신 인식 대기(`detection != DETECTED` 시 안내 문구) + 시작 카운트다운 |
@@ -32,7 +33,9 @@
       │   │  └─ (Records 탭) ──▶ [기록 (#23·#24)]
       │   └─ (CALIBRATION) ───▶ [보정 (#35)]
       │
-      └─ (START WORKOUT) ──▶ (카메라 권한 없음) ──▶ [권한 거절 (#11)]
+      └─ (START WORKOUT) ──▶ [트랙 선택 (track_select)]
+                                    │ (트랙 선택 후 START)
+                                    ├─ (카메라 권한 없음) ──▶ [권한 거절 (#11)]
                                     │ (허용)
                                     ▼
                           [준비 (READY, #34)]
@@ -84,6 +87,9 @@
 ### 라이트 메인 (타이틀 · 홈 · 휴식)
 ![라이트 및 다크 타이틀 시안](images/wireframe/light-title.jpg)
 ![라이트 메인 홈 및 휴식 시안](images/wireframe/light-home-rest.jpg)
+
+### 트랙 선택 (라이트 · 다크)
+![트랙 선택 화면 시안](images/wireframe/track-select.jpg)
 
 ### 다크 모드 (타이틀 · 로비 · 결과 · 운동 · 휴식 · 관절 이탈 비네트)
 ![다크 타이틀·로비·결과 시안](images/wireframe/dark-flow.jpg)
