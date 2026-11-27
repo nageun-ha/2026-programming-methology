@@ -11,8 +11,9 @@ ML Kit Pose Detection과 MediaPipe Pose Landmarker를 같은 조건에서 비교
 
 이유는 세 가지다.
 
-1. **화면 밖 관절을 알아본다.** #3 결정은 "화면 밖 = 사용자 원인(Miss), 가려짐 = 소프트웨어 원인(Great)"이라 ①이 둘을 구분해야 한다. 아래 측정에서 MediaPipe full만 화면 밖 손목을 경계 밖 좌표 + 낮은 신뢰도로 알려 줬다. 가벼운 모델(MediaPipe lite, ML Kit 기본)은 화면 밖 손목을 경계 안쪽(x≈0.98)에 높은 신뢰도(0.94~0.95)로 붙여 놓았다.
+1. **화면 밖 관절을 알아본다.** #3 결정은 "화면 밖 = 사용자 원인(Miss), 가려짐 = 소프트웨어 원인(Great)"이라 ①이 둘을 구분해야 한다. 아래 측정에서 MediaPipe full만 화면 밖 손목을 경계 밖 좌표 + 낮은 신뢰도로 알려 줬다. 가벼운 모델(MediaPipe lite, ML Kit 기본)은 화면 밖 손목을 경계 안쪽(x≈0.98)에 높은 신뢰도(0.94~0.96)로 붙여 놓았다.
 2. **신뢰도가 두 종류다.** MediaPipe는 `presence`(화면 안에 있을 확률)와 `visibility`(가려지지 않고 보일 확률)를 따로 준다. 화면 밖과 가려짐을 나누는 데 그대로 쓸 수 있다. ML Kit은 `inFrameLikelihood` 하나다.
+   - `PoseFrame`으로 옮기는 방법(#25): `Landmark.likelihood` = `min(presence, visibility)`. `outOfFrame`은 신뢰도가 아니라 **좌표가 0~1 밖**인지로 정한다(화면 밖 관절은 신뢰도가 낮게 나오므로 신뢰도와 상관없이 좌표로 본다). `lowConfidence`는 화면 안이고 `likelihood` < 0.5인 관절이다(#59 `DetectionClassifier`).
 3. **유지 보수.** ML Kit Pose는 2024-08 `18.0.0-beta5` 이후 새 버전이 없고 아직 beta다. MediaPipe `tasks-vision`은 2026-11 `1.2.3`이 나왔다.
 
 ## 비교표
@@ -28,7 +29,6 @@ ML Kit Pose Detection과 MediaPipe Pose Landmarker를 같은 조건에서 비교
 | 관절 수 | 33 | 33 | 33 | 33 |
 | 좌표 | 픽셀, 회전 적용 후 기준 | 같음 | 0~1, **회전 전 버퍼** 기준 | 같음 |
 | 신뢰도 | `inFrameLikelihood` | 같음 | `visibility`, `presence` | 같음 |
-| 화면 밖 손목 (실제 x=1.28) | x=0.99, 0.95 ❌ | x=1.09, 0.34 | x=0.98, 0.94 ❌ | x=1.22, presence 0.08 |
 | 여러 사람 | 1명 | 1명 | 여러 명 가능 | 여러 명 가능 |
 
 - 관절 번호는 두 라이브러리 모두 BlazePose 33점 순서가 같다(0=코, 15·16=손목, 27·28=발목). LEFT/RIGHT는 사용자 몸 기준이다.
@@ -44,6 +44,7 @@ ML Kit Pose Detection과 MediaPipe Pose Landmarker를 같은 조건에서 비교
 - 에뮬레이터: Pixel 6 AVD, API 35 x86_64, PC CPU(WHPX). **폰 성능과 다르므로 순위를 정하는 데 쓰지 않는다.** 측정 코드가 도는지 확인한 값이다.
 - 실기기: Galaxy S24 Ultra(SM-S928N), Android 17, 충전 중, 2026-11-26. 같은 테스트 6개를 한 번에 돌렸다(`Finished 6 tests on SM-S928N - 17`).
 - 실기기에서 lite가 full보다 느렸다(p90 41.3 vs 24.5ms). 원인은 확인하지 않았다. 결론은 full이라 영향이 없다.
+- 추론만 잰 값이다. #25의 `ImageProxy.toBitmap()`·회전 비용은 빠져 있으므로 #25에서 실기기로 프레임당 전체 처리 시간을 다시 잰다. p90 24.5ms라 66ms 기준까지 여유가 있다.
 - 실기기 측정 명령 (측정 코드는 머지하지 않는 `bench/pose-library` 브랜치에 있다):
 
 ```
@@ -53,7 +54,8 @@ adb logcat -d -s PoseBench
 
 ### 화면 밖 관절
 - 같은 사진의 오른쪽 44%를 잘라 사람의 한쪽 팔꿈치(실제 x≈1.13)와 손목(x≈1.28)을 화면 밖으로 보냈다. 단일 이미지 모드의 새 검출기로 한 번 돌려 좌표와 신뢰도를 봤다.
-- 사진 1장, 에뮬레이터 결과라 경향만 본다. 실기기에서 실제로 화면 밖으로 걸어 나가며 다시 확인한다(#29 완료 조건과 함께).
+- 비교표의 값은 실기기(SM-S928N)에서 잰 것이다. 사진 1장, 단일 이미지 모드라 경향만 본다.
+- #25는 `LIVE_STREAM`(이전 프레임 추적)이라 결과가 다를 수 있다. 실제로 화면 밖으로 걸어 나가며 다시 확인하는 것을 #25 완료 조건에 넣는다.
 
 ### 좌표 기준 (회전)
 - 바로 선 사진을 반시계 90° 눕힌 버퍼에 "시계 방향 90° 돌려야 선다"(CameraX `rotationDegrees` 규칙)를 넘겼다.
