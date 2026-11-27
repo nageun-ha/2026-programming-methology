@@ -45,6 +45,19 @@ class FramingHintTest {
     }
 
     @Test
+    fun `화면 밖으로 나가 잡힌 관절이 없으면 LOW_LIGHT 대신 돌아올 방향`() {
+        val lowConfidence = setOf(Joint.NOSE, Joint.LEFT_HIP) // 화면 안에 남은 관절은 저신뢰
+        val wentLeft = PoseFrame(
+            emptyMap(), WIDTH, HEIGHT, 0L, DetectionState.USER_CAUSED_LOSS,
+            lowConfidence = lowConfidence, edge = EdgeWarning(0.8f, 0f, 0f, 0f),
+        )
+        val softwareLoss = cut(left = 0.8f).copy(detection = DetectionState.SOFTWARE_LOSS, lowConfidence = lowConfidence)
+
+        assertEquals(FramingHint.MOVE_RIGHT, judgeFraming(wentLeft))
+        assertEquals(FramingHint.LOW_LIGHT, judgeFraming(softwareLoss)) // SOFTWARE_LOSS는 가장자리보다 먼저
+    }
+
+    @Test
     fun `화면 왼쪽이 잘리면 MOVE_RIGHT, 오른쪽이 잘리면 MOVE_LEFT`() {
         assertEquals(FramingHint.MOVE_RIGHT, judgeFraming(cut(left = 0.6f)))
         assertEquals(FramingHint.MOVE_LEFT, judgeFraming(cut(right = 0.6f)))

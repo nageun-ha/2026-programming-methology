@@ -23,19 +23,20 @@ data class FramingThresholds(
 /**
  * [frame] 한 장으로 위치 안내를 정한다. 부수 효과가 없다.
  *
- * 1. [DetectionState.SOFTWARE_LOSS]이거나 잡힌 관절이 없음 → [PoseFrame.lowConfidence]가 있으면
- *    [FramingHint.LOW_LIGHT], 없으면 [FramingHint.NOT_VISIBLE]. SOFTWARE_LOSS에는 직전 관절이 그대로 들어 있어
- *    옛 좌표로 OK가 나와 준비 시간이 쌓이지 않게 먼저 본다.
+ * 1. [DetectionState.SOFTWARE_LOSS] → [PoseFrame.lowConfidence]가 있으면 [FramingHint.LOW_LIGHT], 없으면
+ *    [FramingHint.NOT_VISIBLE]. 직전 관절이 그대로 들어 있어 옛 좌표로 OK가 나와 준비 시간이 쌓이지 않게 먼저 본다.
+ *    이때 edge는 항상 0이다.
  * 2. 가장자리([PoseFrame.edge], 화면 기준): 위·아래 또는 좌우 양쪽 → [FramingHint.STEP_BACK],
  *    왼쪽만 → [FramingHint.MOVE_RIGHT], 오른쪽만 → [FramingHint.MOVE_LEFT]. 잘린 쪽의 반대로 가라는 안내다.
- * 3. 박스가 작음 → [FramingHint.COME_CLOSER]. 박스 높이는 정규화 y의 (최대 − 최소)라 이미 화면 높이 대비 비율이다.
- * 4. 모두 아니면 [FramingHint.OK].
+ *    잡힌 관절이 없어도 본다. 화면 밖으로 나가 신뢰도 높은 관절이 없을 때 "어두워요" 대신 돌아올 방향을 알려 주기 위해서다
+ *    (완전히 나가면 edge는 직전 값을 유지한다, #50).
+ * 3. 잡힌 관절이 없음 → 1번과 같이 [FramingHint.LOW_LIGHT] 또는 [FramingHint.NOT_VISIBLE].
+ * 4. 박스가 작음 → [FramingHint.COME_CLOSER]. 박스 높이는 정규화 y의 (최대 − 최소)라 이미 화면 높이 대비 비율이다.
+ * 5. 모두 아니면 [FramingHint.OK].
  */
 fun judgeFraming(frame: PoseFrame, thresholds: FramingThresholds = FramingThresholds()): FramingHint {
-    val points = frame.landmarks.values
-    if (frame.detection == DetectionState.SOFTWARE_LOSS || points.isEmpty()) {
-        return if (frame.lowConfidence.isEmpty()) FramingHint.NOT_VISIBLE else FramingHint.LOW_LIGHT
-    }
+    val notFound = if (frame.lowConfidence.isEmpty()) FramingHint.NOT_VISIBLE else FramingHint.LOW_LIGHT
+    if (frame.detection == DetectionState.SOFTWARE_LOSS) return notFound
 
     val level = thresholds.edgeWarningLevel
     val left = frame.edge.left >= level
@@ -46,6 +47,8 @@ fun judgeFraming(frame: PoseFrame, thresholds: FramingThresholds = FramingThresh
         right -> return FramingHint.MOVE_LEFT
     }
 
+    val points = frame.landmarks.values
+    if (points.isEmpty()) return notFound
     val boxHeight = points.maxOf { it.y } - points.minOf { it.y }
     if (boxHeight < thresholds.minBoxHeightRatio) return FramingHint.COME_CLOSER
     return FramingHint.OK
