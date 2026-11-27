@@ -7,34 +7,45 @@ import com.example.prm_project.model.PoseFrame
  * 위치 안내 기준값. 첫 통합 데모(#36) 후 조정한다.
  *
  * @property minBoxHeightRatio 관절 박스 높이가 화면 높이의 이 비율보다 작으면 [FramingHint.COME_CLOSER]
- * @property lowLightLikelihood 모든 관절 신뢰도가 이 값 미만이면 [FramingHint.LOW_LIGHT].
- *   #46 DetectionThresholds와 같은 값, #46 머지 후 하나로 합칠 것
  * @property stableFrames 같은 안내가 이 프레임 수만큼 이어져야 표시를 바꾼다
  * @property readyHoldMs 표시가 [FramingHint.OK]인 채로 이 시간이 지나면 준비 완료
- * @property edgeRatio 좌우 가장자리 비율. 가장자리 잘림 판단을 붙이는 다음 PR에서 쓴다
+ * @property edgeWarningLevel [PoseFrame.edge]의 한 방향 값이 이 이상이면 그 방향이 잘린 것으로 본다.
+ *   edge는 가장자리 안쪽 5%에서 0, 경계에서 0.5, 경계 밖 5%에서 1이라 0.5는 관절이 경계에 닿은 지점이다.
+ *   0보다 크기만 해도 안내하면 팔을 옆으로 뻗는 자세에서 가장자리 근처라는 이유만으로 안내가 나온다.
  */
 data class FramingThresholds(
     val minBoxHeightRatio: Float = 0.5f,
-    val lowLightLikelihood: Float = 0.5f,
     val stableFrames: Int = 5,
     val readyHoldMs: Long = 1500L,
-    val edgeRatio: Float = 0.05f,
+    val edgeWarningLevel: Float = 0.5f,
 )
 
 /**
  * [frame] 한 장으로 위치 안내를 정한다. 부수 효과가 없다.
  *
- * 관절 없음 → 신뢰도 전부 낮음 → 박스가 작음 순서로 보고, 모두 아니면 [FramingHint.OK]다.
- * [DetectionState.SOFTWARE_LOSS]에서는 #46이 직전 관절을 그대로 보내므로, 옛 좌표로 OK가 나와
- * 준비 시간이 쌓이지 않게 [FramingHint.NOT_VISIBLE]로 본다.
- * 저신뢰 관절 정보(#59)가 들어오면 이 경우를 [FramingHint.LOW_LIGHT]와 나눈다.
- * 박스 높이는 정규화 y의 (최대 − 최소)라 이미 화면 높이 대비 비율이다.
+ * 1. [DetectionState.SOFTWARE_LOSS]이거나 잡힌 관절이 없음 → [PoseFrame.lowConfidence]가 있으면
+ *    [FramingHint.LOW_LIGHT], 없으면 [FramingHint.NOT_VISIBLE]. SOFTWARE_LOSS에는 직전 관절이 그대로 들어 있어
+ *    옛 좌표로 OK가 나와 준비 시간이 쌓이지 않게 먼저 본다.
+ * 2. 가장자리([PoseFrame.edge], 화면 기준): 위·아래 또는 좌우 양쪽 → [FramingHint.STEP_BACK],
+ *    왼쪽만 → [FramingHint.MOVE_RIGHT], 오른쪽만 → [FramingHint.MOVE_LEFT]. 잘린 쪽의 반대로 가라는 안내다.
+ * 3. 박스가 작음 → [FramingHint.COME_CLOSER]. 박스 높이는 정규화 y의 (최대 − 최소)라 이미 화면 높이 대비 비율이다.
+ * 4. 모두 아니면 [FramingHint.OK].
  */
 fun judgeFraming(frame: PoseFrame, thresholds: FramingThresholds = FramingThresholds()): FramingHint {
-    if (frame.detection == DetectionState.SOFTWARE_LOSS) return FramingHint.NOT_VISIBLE
     val points = frame.landmarks.values
-    if (points.isEmpty()) return FramingHint.NOT_VISIBLE
-    if (points.all { it.likelihood < thresholds.lowLightLikelihood }) return FramingHint.LOW_LIGHT
+    if (frame.detection == DetectionState.SOFTWARE_LOSS || points.isEmpty()) {
+        return if (frame.lowConfidence.isEmpty()) FramingHint.NOT_VISIBLE else FramingHint.LOW_LIGHT
+    }
+
+    val level = thresholds.edgeWarningLevel
+    val left = frame.edge.left >= level
+    val right = frame.edge.right >= level
+    when {
+        frame.edge.top >= level || frame.edge.bottom >= level || (left && right) -> return FramingHint.STEP_BACK
+        left -> return FramingHint.MOVE_RIGHT
+        right -> return FramingHint.MOVE_LEFT
+    }
+
     val boxHeight = points.maxOf { it.y } - points.minOf { it.y }
     if (boxHeight < thresholds.minBoxHeightRatio) return FramingHint.COME_CLOSER
     return FramingHint.OK
