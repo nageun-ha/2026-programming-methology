@@ -37,7 +37,7 @@ class FakePoseSource(
             val t = index * 1000 / fps
             emit(frameAt(t, startMs))
             index++
-            delay(index * 1000 / fps - t) // 누적 오차 없이 index로 시각을 정한다
+            delay(startMs + index * 1000 / fps - clock()) // 목표 시각까지 남은 시간만 기다려 늦어짐이 쌓이지 않는다
         }
     }
 
