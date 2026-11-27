@@ -8,12 +8,15 @@ import com.example.prm_project.model.DetectionState
 import com.example.prm_project.model.ExercisePhase
 import com.example.prm_project.model.ExerciseRecord
 import com.example.prm_project.model.ExerciseState
+import com.example.prm_project.model.Grade
 import com.example.prm_project.model.PoseFrame
 import com.example.prm_project.model.TargetPose
 import java.time.LocalDate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,8 +50,7 @@ class RealExerciseSession(
 
     private val recentFrames = ArrayDeque<PoseFrame>()
     private var job: Job? = null
-    private var judgedCount = 0
-    private var successCount = 0
+    private val gradeCounts = IntArray(Grade.entries.size)
     private var softwareFailCount = 0
 
     override fun start() {
@@ -75,13 +77,16 @@ class RealExerciseSession(
 
     override fun stop(): ExerciseRecord {
         job?.cancel()
-        return ExerciseRecord(
-            date = today(),
-            durationSec = (_state.value.beatTimeMs / 1000).toInt(),
-            judgedCount = judgedCount,
-            successCount = successCount,
-            softwareFailCount = softwareFailCount,
-        )
+        return synchronized(gradeCounts) {
+            ExerciseRecord(
+                date = today(),
+                durationSec = (_state.value.beatTimeMs / 1000).toInt(),
+                judgedCount = gradeCounts.sum(),
+                successCount = Grade.entries.sumOf { if (it.isSuccess) gradeCounts[it.ordinal] else 0 },
+                softwareFailCount = softwareFailCount,
+                gradeCounts = Grade.entries.associateWith { gradeCounts[it.ordinal] },
+            )
+        }
     }
 
     private fun addFrame(frame: PoseFrame) = synchronized(recentFrames) {
@@ -100,17 +105,20 @@ class RealExerciseSession(
         }
     }
 
-    private fun judgeBeat(pose: TargetPose, beat: Int, beatTimeMs: Long) {
+    private suspend fun judgeBeat(pose: TargetPose, beat: Int, beatTimeMs: Long) {
         val judgeAtMs = _state.value.startedAtMs + beatTimeMs + calibration.poseLatencyOffsetMs
         val target = pose.copy(toleranceDeg = pose.toleranceDeg + calibration.toleranceOffsetDeg)
         val candidates = synchronized(recentFrames) {
             recentFrames.filter { it.timestampMs in judgeAtMs - MAX_FRAME_AGE_MS..judgeAtMs }.takeLast(JUDGE_FRAME_COUNT)
         }.ifEmpty { listOf(PoseFrame(emptyMap(), 1, 1, judgeAtMs, DetectionState.SOFTWARE_LOSS)) }
         val result = candidates.map { judge(it, target, beat, beatTimeMs) }.minBy { it.grade.ordinal }
-        judgedCount++
-        if (result.grade.isSuccess) successCount++
-        if (result.recognitionFailed) softwareFailCount++
-        _state.value = _state.value.copy(lastResult = result)
+        val context = currentCoroutineContext()
+        synchronized(gradeCounts) {
+            context.ensureActive()
+            gradeCounts[result.grade.ordinal]++
+            if (result.recognitionFailed) softwareFailCount++
+            _state.value = _state.value.copy(lastResult = result)
+        }
     }
 
     private companion object {
