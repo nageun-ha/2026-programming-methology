@@ -76,6 +76,7 @@ class CameraPoseSource(
             RawLandmark(index, point.x() * input.width, point.y() * input.height, likelihood)
         }
         val timestampMs = result.timestampMs()
+        Log.d(TAG, "latency=${clock() - timestampMs}ms") // 프레임을 받은 순간부터 결과까지(변환·추론 포함)
         val classified = classifier.classify(mapper.map(raw), timestampMs)
         output.tryEmit(
             PoseFrame(
