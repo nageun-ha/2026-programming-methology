@@ -43,8 +43,9 @@ object GradeThresholds {
  * 2. [DetectionState.USER_CAUSED_LOSS]이고 관절이 하나도 없음: MISS.
  * 3. 잘린 각도가 있음: 측정된 각도가 1개 이상이고 목표 각도 중 [GradeThresholds.MIN_MEASURED_RATIO] 이상이면
  *    측정된 각도만으로 일치율([matchRate])을 내고, 아니면 MISS다. 감지 상태(USER_CAUSED_LOSS 포함)와 상관없다.
- * 4. 잘린 각도가 없음: 가려진 각도는 빼고 일치율로 등급을 정한다. 하나도 잴 수 없으면 1번과 같다
- *    (#3: 화면 안인데 전부 저신뢰).
+ * 4. 잘린 각도가 없음: 가려진 각도는 빼고 일치율로 등급을 정한다. 하나도 잴 수 없으면
+ *    [DetectionState.DETECTED]는 1번과 같고(#3: 화면 안인데 전부 저신뢰), [DetectionState.USER_CAUSED_LOSS]는 MISS다
+ *    (다른 관절이 화면 밖이라 사용자 원인).
  *
  * wrongJoints에는 잴 수 있었고 오차가 허용 오차를 넘은 관절만 넣는다. 잘리거나 가려진 각도는 넣지 않고, PERFECT면 null이다.
  * 일치율은 이 안에서만 쓰고 [JudgeResult]에 넣거나 저장하지 않는다.
@@ -63,7 +64,11 @@ fun judge(frame: PoseFrame, target: TargetPose, beatIndex: Int, elapsedMs: Long)
             measuredCount >= GradeThresholds.MIN_MEASURED_RATIO * target.targetAngles.size
         if (!enough) return userCausedMiss(target, beatIndex, elapsedMs)
     } else if (measuredCount == 0) {
-        return recognitionFailed(target, beatIndex, elapsedMs)
+        return if (frame.detection == DetectionState.USER_CAUSED_LOSS) {
+            userCausedMiss(target, beatIndex, elapsedMs)
+        } else {
+            recognitionFailed(target, beatIndex, elapsedMs)
+        }
     }
 
     val rate = matchRate(measured, target)

@@ -163,6 +163,15 @@ class GradeJudgeTest {
     }
 
     @Test
+    fun `다른 관절이 화면 밖이고 목표 각도를 하나도 못 재면 MISS`() {
+        val ankleOut = armFrame(90f, out = setOf(Joint.LEFT_ANKLE)) // USER_CAUSED_LOSS, 팔 각도는 잘리지 않음
+        val result = judgeArm(ankleOut.copy(landmarks = ankleOut.landmarks - Joint.LEFT_ELBOW - Joint.LEFT_WRIST)) // 팔 가려짐
+
+        assertEquals(Grade.MISS, result.grade)
+        assertFalse(result.recognitionFailed)
+    }
+
+    @Test
     fun `잘린 각도는 wrongJoints에 넣지 않는다`() {
         val result = judgeArm(armFrame(110f, out = setOf(Joint.LEFT_WRIST))) // 어깨 오차 20° → 0.556
 
