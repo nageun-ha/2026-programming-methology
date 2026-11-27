@@ -19,6 +19,9 @@ data class Landmark(val x: Float, val y: Float, val likelihood: Float)
  *
  * @property landmarks 화면 안(0~1)에 있고 신뢰도가 기준 이상인 관절만 들어 있다. 기준은 ①이 정한다.
  *   [detection]이 [DetectionState.SOFTWARE_LOSS]면 직전에 잡힌 관절이 그대로 들어 있다(스켈레톤 깜빡임 방지).
+ * @property imageWidth 회전 보정 후 이미지 너비(px). 세로로 든 폰이면 높이보다 작다.
+ * @property timestampMs ①이 프레임을 받은 시각(ms). [android.os.SystemClock.elapsedRealtime] 기준이라
+ *   운동 시작 시각(`ExerciseState.startedAtMs`)과 같은 시계로 비교할 수 있다(#45).
  * @property outOfFrame 이번 프레임에서 좌표가 화면(0~1) 밖으로 추정된 관절. 신뢰도와 상관없다. [landmarks]에는 없다.
  *   경계를 넘은 정도가 작으면(추정 흔들림 범위) [detection]은 DETECTED로 남는다.
  * @property lowConfidence 이번 프레임에서 화면 안에 있지만 신뢰도가 기준 미만인 관절(가려짐·어두움). [landmarks]에는 없다.
