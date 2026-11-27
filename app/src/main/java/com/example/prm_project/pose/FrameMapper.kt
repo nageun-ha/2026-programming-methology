@@ -8,7 +8,7 @@ import com.example.prm_project.model.Landmark
  *
  * @property index BlazePose 33점 번호. ML Kit `PoseLandmark` 상수와 MediaPipe 랜드마크 순서가 같다.
  * @property x 카메라 버퍼(회전 전) 기준 픽셀
- * @property likelihood 화면 안에 보일 확률(ML Kit `inFrameLikelihood`, MediaPipe `visibility`)
+ * @property likelihood 화면 안에 보일 확률(ML Kit `inFrameLikelihood`, MediaPipe `min(presence, visibility)`)
  */
 data class RawLandmark(val index: Int, val x: Float, val y: Float, val likelihood: Float)
 
