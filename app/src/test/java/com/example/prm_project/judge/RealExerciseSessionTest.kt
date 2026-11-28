@@ -72,7 +72,12 @@ class RealExerciseSessionTest {
 
         assertEquals((0..9).toList(), results.map { it.beatIndex })
         assertTrue(results.all { it.recognitionFailed && it.grade == Grade.GREAT })
-        assertEquals(ExerciseRecord(TODAY, 10, 10, 10, 10), record)
+        assertEquals(
+            ExerciseRecord(TODAY, 10, 10, 10, 10, gradeCounts = mapOf(
+                Grade.PERFECT to 0, Grade.GREAT to 10, Grade.BAD to 0, Grade.MISS to 0,
+            )),
+            record,
+        )
     }
 
     @Test
@@ -83,7 +88,9 @@ class RealExerciseSessionTest {
         val results = playToEnd(session)
 
         assertEquals(listOf(0, 1, 4, 5), results.map { it.beatIndex })
-        assertEquals(4, session.stop().judgedCount)
+        val record = session.stop()
+        assertEquals(4, record.judgedCount)
+        assertEquals(4, record.gradeCounts.getValue(Grade.GREAT))
     }
 
     @Test
@@ -97,9 +104,24 @@ class RealExerciseSessionTest {
 
         val record = session.stop()
 
+        assertEquals(Grade.entries.associateWith { grade -> results.count { it.grade == grade } }, record.gradeCounts)
+        assertEquals(record.judgedCount, record.gradeCounts.values.sum())
         assertEquals(results.count { it.grade.isSuccess }, record.successCount)
         assertEquals(results.count { it.recognitionFailed }, record.softwareFailCount)
         assertEquals(listOf(true, true, false, false, true, false), results.map { it.grade.isSuccess })
+    }
+
+    @Test
+    fun `새 세션은 모든 등급을 0회부터 센다`() = runTest {
+        val chart = Chart(60, listOf(ChartItem.Rest(1), ChartItem.Pose("a", 1)))
+        val first = startedSession(chart)
+        playToEnd(first)
+        assertEquals(1, first.stop().gradeCounts.getValue(Grade.GREAT))
+
+        val second = startedSession(chart)
+        val record = second.stop()
+        assertEquals(0, record.judgedCount)
+        assertEquals(Grade.entries.associateWith { 0 }, record.gradeCounts)
     }
 
     @Test
