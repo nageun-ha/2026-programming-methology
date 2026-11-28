@@ -64,8 +64,8 @@ class GradeJudgeTest {
     }
 
     @Test
-    fun `사용자 원인 인식 실패는 MISS로 실패`() {
-        val result = judgeAt(frame(90f, DetectionState.USER_CAUSED_LOSS)) // 각도가 정확해도 MISS
+    fun `화면 밖으로 나가 관절이 하나도 없으면 MISS로 실패`() {
+        val result = judgeAt(frame(90f).copy(landmarks = emptyMap(), detection = DetectionState.USER_CAUSED_LOSS))
 
         assertEquals(Grade.MISS, result.grade)
         assertFalse(result.grade.isSuccess)
@@ -116,7 +116,83 @@ class GradeJudgeTest {
         assertNull(result.wrongJoints)
     }
 
+    /**
+     * 왼팔을 몸통에서 [shoulderDeg]만큼 벌리고 곧게 편 프레임. 어깨 각도 = [shoulderDeg], 팔꿈치 각도 = 180°.
+     * [out] 관절은 화면 밖이라 landmarks에서 빼고 outOfFrame에 넣는다.
+     */
+    private fun armFrame(
+        shoulderDeg: Float,
+        out: Set<Joint> = emptySet(),
+        detection: DetectionState = if (out.isEmpty()) DetectionState.DETECTED else DetectionState.USER_CAUSED_LOSS,
+    ): PoseFrame {
+        val rad = Math.toRadians(shoulderDeg.toDouble())
+        fun along(r: Float) = Landmark(0.5f + r * sin(rad).toFloat(), 0.3f + r * cos(rad).toFloat(), 1f)
+        val all = mapOf(
+            Joint.LEFT_HIP to Landmark(0.5f, 0.7f, 1f),
+            Joint.LEFT_SHOULDER to Landmark(0.5f, 0.3f, 1f),
+            Joint.LEFT_ELBOW to along(0.15f),
+            Joint.LEFT_WRIST to along(0.3f),
+        )
+        return PoseFrame(all - out, 100, 100, 0L, detection, outOfFrame = out)
+    }
+
+    private fun judgeArm(frame: PoseFrame, target: TargetPose = ARM) = judge(frame, target, beatIndex = 0, elapsedMs = 0L)
+
+    @Test
+    fun `손목만 화면 밖이어도 어깨 각도가 맞으면 판정한다`() {
+        val result = judgeArm(armFrame(90f, out = setOf(Joint.LEFT_WRIST))) // 팔꿈치 각도는 잘림, 어깨 각도 1/2 측정
+
+        assertEquals(Grade.PERFECT, result.grade)
+        assertFalse(result.recognitionFailed)
+    }
+
+    @Test
+    fun `손목과 팔꿈치가 화면 밖이면 MISS`() {
+        val result = judgeArm(armFrame(90f, out = setOf(Joint.LEFT_WRIST, Joint.LEFT_ELBOW))) // 잰 각도 0개
+
+        assertEquals(Grade.MISS, result.grade)
+        assertFalse(result.recognitionFailed)
+    }
+
+    @Test
+    fun `잘린 각도가 있고 잰 각도가 MIN_MEASURED_RATIO 미만이면 MISS`() {
+        val withKnee = ARM.copy(targetAngles = ARM.targetAngles + (Joint.LEFT_KNEE to 170f)) // 무릎은 가려짐
+        val result = judgeArm(armFrame(90f, out = setOf(Joint.LEFT_WRIST)), withKnee) // 1/3 < 0.5
+
+        assertEquals(Grade.MISS, result.grade)
+    }
+
+    @Test
+    fun `다른 관절이 화면 밖이고 목표 각도를 하나도 못 재면 MISS`() {
+        val ankleOut = armFrame(90f, out = setOf(Joint.LEFT_ANKLE)) // USER_CAUSED_LOSS, 팔 각도는 잘리지 않음
+        val result = judgeArm(ankleOut.copy(landmarks = ankleOut.landmarks - Joint.LEFT_ELBOW - Joint.LEFT_WRIST)) // 팔 가려짐
+
+        assertEquals(Grade.MISS, result.grade)
+        assertFalse(result.recognitionFailed)
+    }
+
+    @Test
+    fun `잘린 각도는 wrongJoints에 넣지 않는다`() {
+        val result = judgeArm(armFrame(110f, out = setOf(Joint.LEFT_WRIST))) // 어깨 오차 20° → 0.556
+
+        assertEquals(Grade.BAD, result.grade)
+        assertEquals(listOf(Joint.LEFT_SHOULDER), result.wrongJoints)
+    }
+
+    @Test
+    fun `모든 관절이 보이면 잰 각도 전부로 판정한다`() {
+        val result = judgeArm(armFrame(110f)) // (0.556 + 1) / 2 = 0.778
+
+        assertEquals(Grade.GREAT, result.grade)
+        assertEquals(listOf(Joint.LEFT_SHOULDER), result.wrongJoints)
+    }
+
     private companion object {
         val TARGET = TargetPose("test", "테스트", mapOf(Joint.LEFT_ELBOW to 90f), toleranceDeg = 15f)
+
+        /** 팔을 옆으로 곧게 든 자세. */
+        val ARM = TargetPose(
+            "arm", "팔 들기", mapOf(Joint.LEFT_SHOULDER to 90f, Joint.LEFT_ELBOW to 180f), toleranceDeg = 15f,
+        )
     }
 }
